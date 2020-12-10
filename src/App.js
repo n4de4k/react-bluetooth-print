@@ -1,68 +1,4 @@
 import { useCallback, useState } from 'react'
-import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist/build/pdf'
-// import PDFJS from './pdf'
-
-GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.5.207/pdf.worker.js";
-
-function base64ToUint8Array(base64) {
-  const raw = atob(base64); 
-  const uint8Array = new Uint8Array(new ArrayBuffer(raw.length));
-  for (let i = 0; i < raw.length; i++) {
-    uint8Array[i] = raw.charCodeAt(i);
-  }
-  return uint8Array;
-}
-
-function getPageText(pageNum, PDFDocumentInstance) {
-  // Return a Promise that is solved once the text of the page is retrieven
-  return new Promise(function (resolve, reject) {
-      PDFDocumentInstance.getPage(pageNum).then(function (pdfPage) {
-          // The main trick to obtain the text of the PDF page, use the getTextContent method
-          pdfPage.getTextContent().then(function (textContent) {
-              const textItems = textContent.items;
-              let finalString = "";
-
-              // Concatenate the string of the item to the final string
-              for (let i = 0; i < textItems.length; i++) {
-                  const item = textItems[i];
-
-                  finalString += item.str + " ";
-              }
-
-              // Solve promise with the text retrieven from the page
-              resolve(finalString);
-          });
-      });
-  });
-}
-
-const extractText = url => {
-  return new Promise(resolve => {
-    getDocument(url).promise.then(function (PDFDocumentInstance) {
-      console.log({PDFDocumentInstance})
-      getPageText(1, PDFDocumentInstance).then(res => resolve(res))
-    }, function (reason) {
-        console.error(reason);
-    });
-  })
-}
-
-const toDataUrl = (url) => {
-  return new Promise(resolve => {
-    const xhr = new XMLHttpRequest();
-    xhr.onload = function() {
-        const reader = new FileReader();
-        reader.onloadend = function() {
-          console.log(reader.result.split(',')[1])
-            resolve(base64ToUint8Array(reader.result.split(',')[1]));
-        }
-        reader.readAsDataURL(xhr.response);
-    };
-    xhr.open('GET', url);
-    xhr.responseType = 'blob';
-    xhr.send();
-  })
-}
 
 const alignCenterBit = new Uint8Array([27, 97, 1])
 const alignRightBit = new Uint8Array([27, 97, 2])
@@ -73,13 +9,86 @@ const strToBit = val => {
   const enc = new TextEncoder()
   return new Uint8Array(enc.encode(val))
 }
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+
+const content = `
+  <center>eMedika</center><br/>
+  <center>Transaction ID: 4</center><br/>
+  <center>5 November, 2020</center><br/>
+  <line/><br/>
+  <newline/><br/>
+  Pharmaton x2<br/>
+  <right>Rp 25.000</right><br/>
+  Bisolvon x3 <br/>
+  <right>Rp 30.000</right><br/>
+  <line/><br/>
+  Sub Total<br/>
+  <right>Rp 55.000</right><br/>
+  Tax <br/>
+  <right>Rp 5.500</right><br/>
+  <b>Total</b> <br/>
+  <right><b>Rp 60.500</b></right><br/>
+  <newline/><br/>
+  <newline/><br/>
+`
+
+const parseTextToByte = txt => {
+  const str = txt.replace(/\s+/g, " ")
+  const lines = str.split('<br/>')
+  console.log(lines)
+  const result = []
+  for (const line of lines) {
+    if (line.search(/(<([^>]+)>)/gi) !== -1) {
+      const parsed = line.split(/<|>/gi).filter(item => !!item && item !== " ")
+      console.log(parsed)
+      if (!['center', 'right'].includes(parsed[0])) {
+        result.push(alignLeftBit)
+      }
+      for (const itemParsed of parsed) {
+        switch (itemParsed) {
+          case 'center':
+            result.push(alignCenterBit)
+            break
+          case 'right':
+            result.push(alignRightBit)
+            break
+          case 'b':
+            result.push(boldBit)
+            break;
+          case '/b':
+            result.push(unBoldBit)
+            break
+          case '/right':
+          case '/center':
+            result.push(alignLeftBit)
+            break;
+          case 'line/':
+            result.push(lineCode)
+            result.push(lineCode)
+            break
+          case 'newline/':
+              result.push(strToBit(" "))
+              break
+          // Add more option here
+          default:
+            result.push(strToBit(itemParsed))
+            break
+        }
+      }
+    } else {
+      result.push(alignLeftBit)
+      result.push(strToBit(line))
+    }
+    result.push(strToBit('\n'))
+  }
+  return result
 }
+
+const lineCode = new Uint8Array([...Array(512)].map(() => 95))
 
 const usePrint = (param = {}) => {
   const { filters } = param
   const [printerChar, setPrinterChar] = useState(null)
+
   const connect = useCallback(async () => {
     const options = {
       optionalServices: ['49535343-fe7d-4ae5-8fa9-9fafd205e455']
@@ -119,49 +128,18 @@ const usePrint = (param = {}) => {
       alert('Connect first')
       return
     }
-    // extractText('https://storage.googleapis.com/wedocation-asset/41192138433.pdf')
-    //   .then(res => {
-    //     console.log({res})
-    //   })
     try {
       await printerChar.writeValue(new Uint8Array([27,64])) // reset default setting
       await printerChar.writeValue(new Uint8Array([27, 51, 2])) // change line height
-      await printerChar.writeValue(alignCenterBit)
-      await printerChar.writeValue(strToBit('\neMedika\n'))
-      await printerChar.writeValue(strToBit('Transaction ID: 4\n'))
-      await printerChar.writeValue(strToBit("\n"))
+      await printerChar.writeValue(new Uint8Array([27, 33, 1])) // choose smaller font
       
-      await printerChar.writeValue(strToBit('November 5, 2020\n'))
-      
-      await printerChar.writeValue(alignLeftBit)
-      await printerChar.writeValue(strToBit("Pharmaton x13\n"))
-      
-      await printerChar.writeValue(alignRightBit)
-      await printerChar.writeValue(strToBit("Rp 45.000\n"))
-      await printerChar.writeValue(alignLeftBit)
-      await printerChar.writeValue(strToBit("Bisolvon x2\n"))
-      await printerChar.writeValue(alignRightBit)
-      await printerChar.writeValue(strToBit("Rp 5.000\n"))
-      await printerChar.writeValue(strToBit("\n"))
-      await printerChar.writeValue(alignLeftBit)
-      await printerChar.writeValue(strToBit("Sub Total\n"))
-      await printerChar.writeValue(alignRightBit)
-      await printerChar.writeValue(strToBit("Rp 50.000\n"))
-      await printerChar.writeValue(alignLeftBit)
-      await printerChar.writeValue(strToBit("Tax\n"))
-      await printerChar.writeValue(alignRightBit)
-      await printerChar.writeValue(strToBit("Rp 5.000\n"))
-      await printerChar.writeValue(strToBit("\n"))
-      await printerChar.writeValue(boldBit)
-      await printerChar.writeValue(alignLeftBit)
-      await printerChar.writeValue(strToBit("Total\n"))
-      await printerChar.writeValue(alignRightBit)
-      await printerChar.writeValue(strToBit("Rp 55.000\n"))
-      await printerChar.writeValue(unBoldBit)
-      await printerChar.writeValue(alignLeftBit)
-      await printerChar.writeValue(strToBit("Terima kasih!\n"))
-      await printerChar.writeValue(strToBit("\n"))
-      await printerChar.writeValue(strToBit("\n"))
+      const lines = parseTextToByte(content)
+      for (const line of lines) {
+        await printerChar.writeValue(line)
+      }
+
+      await printerChar.writeValue(strToBit('\n'))
+      await printerChar.writeValue(strToBit('hello'))
 
       alert('printed')
     } catch (err) {
