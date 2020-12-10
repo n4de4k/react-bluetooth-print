@@ -1,18 +1,8 @@
-import { useCallback } from 'react'
-import {GlobalWorkerOptions, getDocument, version} from 'pdfjs-dist/build/pdf';
+import { useCallback, useState } from 'react'
+import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist/build/pdf'
+// import PDFJS from './pdf'
 
-GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.js`
-// window.PDFJS.workerSrc = '//cdnjs.cloudflare.com/ajax/libs/pdf.js/1.8.357/pdf.worker.js'
-
-const base64ToArrayBuffer = (base64) => {
-  const binary_string = window.atob(base64);
-  const len = binary_string.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-      bytes[i] = binary_string.charCodeAt(i);
-  }
-  return bytes.buffer;
-}
+GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.5.207/pdf.worker.js";
 
 function base64ToUint8Array(base64) {
   const raw = atob(base64); 
@@ -47,14 +37,14 @@ function getPageText(pageNum, PDFDocumentInstance) {
 }
 
 const extractText = url => {
-  getDocument(url).promise.then(function (PDFDocumentInstance) {
-    getPageText(1, PDFDocumentInstance).then(res => console.log({res}))
-    // Use the PDFDocumentInstance To extract the text later
-
-  }, function (reason) {
-      // PDF loading error
-      console.error(reason);
-  });
+  return new Promise(resolve => {
+    getDocument(url).promise.then(function (PDFDocumentInstance) {
+      console.log({PDFDocumentInstance})
+      getPageText(1, PDFDocumentInstance).then(res => resolve(res))
+    }, function (reason) {
+        console.error(reason);
+    });
+  })
 }
 
 const toDataUrl = (url) => {
@@ -74,9 +64,23 @@ const toDataUrl = (url) => {
   })
 }
 
+const alignCenterBit = new Uint8Array([27, 97, 1])
+const alignRightBit = new Uint8Array([27, 97, 2])
+const alignLeftBit = new Uint8Array([27, 97, 0])
+const boldBit = new Uint8Array([27,69,3])
+const unBoldBit = new Uint8Array([27,69,0])
+const strToBit = val => {
+  const enc = new TextEncoder()
+  return new Uint8Array(enc.encode(val))
+}
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 const usePrint = (param = {}) => {
   const { filters } = param
-  const print = useCallback(async (content) => {
+  const [printerChar, setPrinterChar] = useState(null)
+  const connect = useCallback(async () => {
     const options = {
       optionalServices: ['49535343-fe7d-4ae5-8fa9-9fafd205e455']
     }
@@ -85,10 +89,9 @@ const usePrint = (param = {}) => {
     } else {
       options.filters = filters
     }
-    console.log('options', options)
     navigator.bluetooth.requestDevice(options)
     .then(device => {
-      console.log({device})
+      console.log({device: device.gatt})
       return device.gatt.connect()
     })
     .then(server => {
@@ -100,34 +103,87 @@ const usePrint = (param = {}) => {
       return service.getCharacteristic('49535343-8841-43f4-a8d4-ecbe34729bb3');
     })
     .then(characteristic => {
-      // var enc = new TextEncoder(); // always utf-8
-      // const val = enc.encode("\n=====Leo Tampan Sekali\n")
-      // console.log({val})
-      // toDataUrl('/public/4.pdf').then(res => {
-
-      // })
-      return characteristic.writeValue(content);
+      return setPrinterChar(characteristic)
     })
     .then(param => {
-      alert('Msg sent', param);
+        alert('Connected', param);
     })
-    .catch(err => window.alert(err.message))
+    .catch(err => {
+      console.log(err)
+      window.alert(err.message)
+    })
   }, [filters])
 
-  return { print }
+  const print = async () => {
+    if (!printerChar) {
+      alert('Connect first')
+      return
+    }
+    // extractText('https://storage.googleapis.com/wedocation-asset/41192138433.pdf')
+    //   .then(res => {
+    //     console.log({res})
+    //   })
+    try {
+      await printerChar.writeValue(new Uint8Array([27,64])) // reset default setting
+      await printerChar.writeValue(new Uint8Array([27, 51, 2])) // change line height
+      await printerChar.writeValue(alignCenterBit)
+      await printerChar.writeValue(strToBit('\neMedika\n'))
+      await printerChar.writeValue(strToBit('Transaction ID: 4\n'))
+      await printerChar.writeValue(strToBit("\n"))
+      
+      await printerChar.writeValue(strToBit('November 5, 2020\n'))
+      
+      await printerChar.writeValue(alignLeftBit)
+      await printerChar.writeValue(strToBit("Pharmaton x13\n"))
+      
+      await printerChar.writeValue(alignRightBit)
+      await printerChar.writeValue(strToBit("Rp 45.000\n"))
+      await printerChar.writeValue(alignLeftBit)
+      await printerChar.writeValue(strToBit("Bisolvon x2\n"))
+      await printerChar.writeValue(alignRightBit)
+      await printerChar.writeValue(strToBit("Rp 5.000\n"))
+      await printerChar.writeValue(strToBit("\n"))
+      await printerChar.writeValue(alignLeftBit)
+      await printerChar.writeValue(strToBit("Sub Total\n"))
+      await printerChar.writeValue(alignRightBit)
+      await printerChar.writeValue(strToBit("Rp 50.000\n"))
+      await printerChar.writeValue(alignLeftBit)
+      await printerChar.writeValue(strToBit("Tax\n"))
+      await printerChar.writeValue(alignRightBit)
+      await printerChar.writeValue(strToBit("Rp 5.000\n"))
+      await printerChar.writeValue(strToBit("\n"))
+      await printerChar.writeValue(boldBit)
+      await printerChar.writeValue(alignLeftBit)
+      await printerChar.writeValue(strToBit("Total\n"))
+      await printerChar.writeValue(alignRightBit)
+      await printerChar.writeValue(strToBit("Rp 55.000\n"))
+      await printerChar.writeValue(unBoldBit)
+      await printerChar.writeValue(alignLeftBit)
+      await printerChar.writeValue(strToBit("Terima kasih!\n"))
+      await printerChar.writeValue(strToBit("\n"))
+      await printerChar.writeValue(strToBit("\n"))
+
+      alert('printed')
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  return { connect, print }
 }
 
 function App() {
-  const { print } = usePrint({
-    // filters: [{
-    //   services: [0x1801]
-    // }]
+  const { print, connect } = usePrint({
+    filters: [{
+      name: ['RPP02N']
+    }]
   })
   return (
     <div>
+    <button onClick={connect}>Connect</button>
     <button onClick={() => {
-      extractText('/public/4.pdf')//.then(res => print(res))
-    }}>PDF</button>
+      print()
+    }}>Print</button>
     </div>
   );
 }
