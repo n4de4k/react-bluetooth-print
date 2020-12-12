@@ -119,10 +119,10 @@ const usePrint = (param = {}) => {
       return device.gatt.connect()
     })
     .then(server => {
-      return server.getPrimaryService('49535343-fe7d-4ae5-8fa9-9fafd205e455')
+      return server.getPrimaryService('49535343-fe7d-4ae5-8fa9-9fafd205e455') // Primary Service ID in machine
     })
     .then(service => {
-      return service.getCharacteristic('49535343-8841-43f4-a8d4-ecbe34729bb3');
+      return service.getCharacteristic('49535343-8841-43f4-a8d4-ecbe34729bb3') // Characteristic ID in service with write functionality
     })
     .then(characteristic => {
       return setPrinterChar(characteristic)
